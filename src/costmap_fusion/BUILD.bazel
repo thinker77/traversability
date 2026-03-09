@@ -1,0 +1,21 @@
+load("@rules_ros2//ros2:cc_defs.bzl", "ros2_cc_binary", "ros2_cc_library")
+
+ros2_cc_library(
+    name = "costmap_fusion_node",
+    srcs = ["src/costmap_fusion_node.cpp"],
+    hdrs = ["include/costmap_fusion/costmap_fusion_node.hpp"],
+    includes = ["include"],
+    deps = [
+        "@ros2_grid_map_msgs//:grid_map_msgs",
+        "@ros2_nav_msgs//:nav_msgs",
+        "@ros2_rclcpp//:rclcpp",
+        "@ros2_rclcpp_components//:rclcpp_components",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+ros2_cc_binary(
+    name = "costmap_fusion_main",
+    srcs = ["src/main.cpp"],
+    deps = [":costmap_fusion_node"],
+)

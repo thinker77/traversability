@@ -1,0 +1,17 @@
+elevation_mapping_node:
+  ros__parameters:
+    # Grid
+    resolution_m: 0.1
+    map_length_x_m: 20.0
+    map_length_y_m: 20.0
+
+    # Sensor model
+    sensor_cutoff_min_depth_m: 0.2
+    sensor_cutoff_max_depth_m: 80.0
+
+    # Temporal
+    time_tolerance_sec: 0.2
+    scan_duration_sec: 0.1   # used for motion compensation
+
+    # Layers published
+    layers: ["elevation", "variance", "slope", "roughness", "traversability"]

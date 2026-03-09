@@ -1,0 +1,16 @@
+package(default_visibility = ["//visibility:public"])
+
+# Top-level build target — builds all perception nodes
+filegroup(
+    name = "all_nodes",
+    srcs = [
+        "//src/lidar_preprocess:lidar_preprocess_node",
+        "//src/camera_preprocess:camera_preprocess_node",
+        "//src/sensor_sync:sensor_sync_node",
+        "//src/elevation_mapping:elevation_mapping_node",
+        "//src/depth_generation:depth_generation_node",
+        "//src/segmentation:segmentation_node",
+        "//src/bev_projection:bev_projection_node",
+        "//src/costmap_fusion:costmap_fusion_node",
+    ],
+)

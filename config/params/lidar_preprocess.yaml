@@ -1,0 +1,12 @@
+lidar_preprocess_node:
+  ros__parameters:
+    # Deskewing
+    deskew_enabled: true
+    imu_queue_size: 200
+
+    # Range filter
+    min_range_m: 0.5
+    max_range_m: 80.0
+
+    # Voxel downsampling (0.0 = disabled)
+    voxel_leaf_size_m: 0.1

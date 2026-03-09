@@ -1,0 +1,28 @@
+segmentation_node:
+  ros__parameters:
+    # Model
+    model_path: "models/seg_model.onnx"
+    input_width: 640
+    input_height: 384
+    confidence_threshold: 0.5
+
+    # Classes (index → label)
+    class_labels: ["road", "grass", "vegetation", "obstacle", "vehicle", "unknown"]
+
+    # Depth-aware refinement
+    edge_refinement_enabled: true
+    occlusion_handling_enabled: true
+
+    # Inference backend: "onnxruntime" | "tensorrt"
+    # T4 development:  use "onnxruntime" (CUDA EP enabled)
+    # Thor production: use "tensorrt" with .trt engine
+    backend: "onnxruntime"
+
+    # TensorRT-specific (ignored when backend = onnxruntime)
+    tensorrt_engine_path: "models/seg_model.trt"
+    tensorrt_fp16_enabled: true
+    tensorrt_int8_enabled: false
+
+    # ONNX Runtime-specific (ignored when backend = tensorrt)
+    onnxruntime_use_cuda_ep: true
+    onnxruntime_cuda_device_id: 0

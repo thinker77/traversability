@@ -1,0 +1,22 @@
+load("@rules_ros2//ros2:cc_defs.bzl", "ros2_cc_binary", "ros2_cc_library")
+
+ros2_cc_library(
+    name = "bev_projection_node",
+    srcs = ["src/bev_projection_node.cpp"],
+    hdrs = ["include/bev_projection/bev_projection_node.hpp"],
+    includes = ["include"],
+    deps = [
+        "@ros2_grid_map_msgs//:grid_map_msgs",
+        "@ros2_nav_msgs//:nav_msgs",
+        "@ros2_rclcpp//:rclcpp",
+        "@ros2_rclcpp_components//:rclcpp_components",
+        "@ros2_sensor_msgs//:sensor_msgs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+ros2_cc_binary(
+    name = "bev_projection_main",
+    srcs = ["src/main.cpp"],
+    deps = [":bev_projection_node"],
+)

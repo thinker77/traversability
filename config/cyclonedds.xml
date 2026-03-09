@@ -1,0 +1,26 @@
+<!-- CycloneDDS configuration for traversability_generator
+     Enables shared memory (Iceoryx) for zero-copy large message transport.
+     Works on both T4 (x86_64) and Thor (aarch64).
+
+     Set via: export CYCLONEDDS_URI=file://$(pwd)/config/cyclonedds.xml
+-->
+<CycloneDDS>
+  <Domain>
+    <General>
+      <Interfaces>
+        <NetworkInterface autodetermine="true" priority="default" multicast="default"/>
+      </Interfaces>
+    </General>
+
+    <!-- Shared memory: zero-copy for PointCloud2 / Image topics on localhost -->
+    <SharedMemory>
+      <Enable>true</Enable>
+      <LogLevel>info</LogLevel>
+    </SharedMemory>
+
+    <!-- Larger receive buffers for PointCloud2 -->
+    <Internal>
+      <SocketReceiveBufferSize min="10MB"/>
+    </Internal>
+  </Domain>
+</CycloneDDS>

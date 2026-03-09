@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Common build flags
+# ─────────────────────────────────────────────────────────────────────────────
+build --cxxopt=-std=c++17
+build --host_cxxopt=-std=c++17
+build --define=ros_distro=jazzy
+build --incompatible_enable_cc_toolchain_resolution
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Debug / Release
+# ─────────────────────────────────────────────────────────────────────────────
+build:release --compilation_mode=opt
+build:debug   --compilation_mode=dbg --cxxopt=-g
+
+# ─────────────────────────────────────────────────────────────────────────────
+# x86_gpu  — development on T4 / any x86_64 + CUDA GPU
+# Usage: bazel build --config=x86_gpu //...
+# ─────────────────────────────────────────────────────────────────────────────
+build:x86_gpu --platforms=//platforms:x86_64_gpu
+build:x86_gpu --copt=-O2
+build:x86_gpu --copt=-DWITH_CUDA
+# Backend selected at runtime via YAML (onnxruntime or tensorrt)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# thor  — production on NVIDIA Thor (aarch64, Blackwell GPU, Drive OS)
+# Usage: bazel build --config=thor //...
+# ─────────────────────────────────────────────────────────────────────────────
+build:thor --platforms=//platforms:thor_aarch64
+build:thor --copt=-march=armv8.2-a+crypto+fp16
+build:thor --copt=-O3
+build:thor --copt=-DWITH_CUDA
+build:thor --copt=-DWITH_TENSORRT
+build:thor --compilation_mode=opt
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Suppress noisy output
+# ─────────────────────────────────────────────────────────────────────────────
+build --ui_event_filters=-INFO
