@@ -1,5 +1,5 @@
 version: "1.0"
-pipeline: offroad_perception
+pipeline: traversability_generator_pipeline
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Node types:
