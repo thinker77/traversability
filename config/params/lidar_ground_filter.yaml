@@ -1,0 +1,7 @@
+lidar_ground_filter_node:
+  ros__parameters:
+    # Points below this height above the estimated ground plane are considered ground
+    ground_height_threshold_m: 0.2
+
+    # Maximum local surface slope (degrees) to still be classified as ground
+    max_slope_deg: 8.0

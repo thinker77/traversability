@@ -1,8 +1,12 @@
-<!-- CycloneDDS configuration for traversability_generator
-     Enables shared memory (Iceoryx) for zero-copy large message transport.
-     Works on both T4 (x86_64) and Thor (aarch64).
+<!--
+  CycloneDDS configuration for traversability_generator.
 
-     Set via: export CYCLONEDDS_URI=file://$(pwd)/config/cyclonedds.xml
+  Shared memory (Iceoryx) is DISABLED by default so the container works
+  without a RouDi daemon. To enable zero-copy on bare-metal or with
+  --ipc=host, set <Enable>true</Enable> and start RouDi first:
+      iox-roudi &
+
+  Set via: export CYCLONEDDS_URI=file://$(pwd)/config/cyclonedds.xml
 -->
 <CycloneDDS>
   <Domain>
@@ -14,13 +18,15 @@
 
     <!-- Shared memory: zero-copy for PointCloud2 / Image topics on localhost -->
     <SharedMemory>
-      <Enable>true</Enable>
+      <Enable>false</Enable>
       <LogLevel>info</LogLevel>
     </SharedMemory>
 
-    <!-- Larger receive buffers for PointCloud2 -->
+    <!-- Larger receive buffers for PointCloud2.
+         On bare-metal set net.core.rmem_max=10485760 and uncomment:
     <Internal>
       <SocketReceiveBufferSize min="10MB"/>
     </Internal>
+    -->
   </Domain>
 </CycloneDDS>

@@ -1,0 +1,16 @@
+bev_fusion_node:
+  ros__parameters:
+    # BEV grid
+    resolution_m: 0.1
+    grid_width_m: 20.0
+    grid_height_m: 20.0
+
+    # Projection surface: "flat" | "elevation"
+    # "elevation" projects onto the elevation map surface — correct for offroad slopes
+    projection_surface: "elevation"
+
+    # Aggregation: "majority_vote" | "probability_sum"
+    aggregation_method: "majority_vote"
+
+    # Unknown class index (cells with no projection → unknown)
+    unknown_class_id: 5

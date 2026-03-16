@@ -1,0 +1,21 @@
+load("@rules_ros2//ros2:cc_defs.bzl", "ros2_cc_binary", "ros2_cc_library")
+
+ros2_cc_library(
+    name = "traversability_costmap_node",
+    srcs = ["src/traversability_costmap_node.cpp"],
+    hdrs = ["include/traversability_costmap/traversability_costmap_node.hpp"],
+    includes = ["include"],
+    deps = [
+        "@ros2_nav_msgs//:nav_msgs",
+        "@ros2_rclcpp//:rclcpp",
+        "@ros2_rclcpp_components//:rclcpp_components",
+        "@ros2_sensor_msgs//:sensor_msgs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+ros2_cc_binary(
+    name = "traversability_costmap_main",
+    srcs = ["src/main.cpp"],
+    deps = [":traversability_costmap_node"],
+)

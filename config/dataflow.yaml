@@ -2,254 +2,419 @@ version: "1.0"
 pipeline: traversability_generator_pipeline
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Node types:
-#   source   – produces data only (drivers, ego state)
-#   operator – consumes and produces data (processing nodes)
-#   sink     – consumes data only (planning stack interface)
+# Architecture: 3 OS-level executable processes connected via DDS (ROS 2)
 #
-# Each input/output entry declares:
-#   name     – internal port name (used in code)
-#   topic    – ROS 2 topic string
-#   msg_type – ROS 2 message type (package/Type)
-#   qos      – optional: sensor_data | system_default | reliable
+#   sensor_preprocessor  ──DDS──>  semantic_generator  ──DDS──>  terrain_modeler
+#        │                                                              │
+#        └──────────────────── DDS (/lidar/points_filtered) ───────────┘
+#                                                                       │
+#                                                               /planner/costmap
+#                                                                       ▼
+#                                                                   planner
+#
+# Each process entry:
+#   executable   – binary launched by the supervisor
+#   dds_inputs   – topics consumed from other processes (cross-process DDS)
+#   dds_outputs  – topics published to downstream processes (cross-process DDS)
+#   nodes        – intra-process nodes (connected via in-process callbacks)
 # ─────────────────────────────────────────────────────────────────────────────
 
-nodes:
+processes:
 
-  # ── Sources ──────────────────────────────────────────────────────────────
+  # ── 1. sensor_preprocessor ─────────────────────────────────────────────────
+  #
+  #  [camera_preprocess_node] ──────────────────────────────────────────────>
+  #
+  #  [lidar_aggregator_node] ──/lidar/points_aggregated──> [lidar_preprocess_node]
+  #
+  - id: sensor_preprocessor
+    executable: sensor_preprocessor
 
-  - id: lidar_driver
-    type: source
-    outputs:
-      - name: points_raw
-        topic: /lidar/raw
-        msg_type: sensor_msgs/PointCloud2
-        qos: sensor_data
-
-  - id: camera_driver
-    type: source
-    outputs:
-      - name: image_raw
-        topic: /camera/image_raw
+    # External hardware / middleware topics entering this process
+    dds_inputs:
+      - topic: /camera/image_raw
         msg_type: sensor_msgs/Image
         qos: sensor_data
-      - name: camera_info
-        topic: /camera/camera_info
+        source: camera_hardware
+      - topic: /camera/camera_info
         msg_type: sensor_msgs/CameraInfo
         qos: reliable
-
-  - id: ego_state_node
-    type: source
-    outputs:
-      - name: odom
-        topic: /odom
+        source: camera_hardware
+      - topic: /lidar/points_raw
+        msg_type: sensor_msgs/PointCloud2
+        qos: sensor_data
+        source: lidar_hardware
+      - topic: /ego/odometry
         msg_type: nav_msgs/Odometry
         qos: sensor_data
-      - name: imu
-        topic: /imu/data
+        source: ego_state
+      - topic: /tf
+        msg_type: tf2_msgs/TFMessage
+        qos: reliable
+        source: ego_state
+      - topic: /tf_static
+        msg_type: tf2_msgs/TFMessage
+        qos: reliable
+        source: ego_state
+      - topic: /imu/data
         msg_type: sensor_msgs/Imu
         qos: sensor_data
+        source: imu_hardware
 
-  # ── Operators ─────────────────────────────────────────────────────────────
-
-  - id: lidar_preprocess_node
-    type: operator
-    package: traversability_generator
-    plugin: traversability_generator::LidarPreprocessNode
-    params: config/params/lidar_preprocess.yaml
-    inputs:
-      - name: points_raw
-        topic: /lidar/raw
-        msg_type: sensor_msgs/PointCloud2
-        qos: sensor_data
-      - name: imu
-        topic: /imu/data
-        msg_type: sensor_msgs/Imu
-        qos: sensor_data
-    outputs:
-      - name: points_proc
-        topic: /lidar/proc
-        msg_type: sensor_msgs/PointCloud2
-        qos: sensor_data
-
-  - id: camera_preprocess_node
-    type: operator
-    package: traversability_generator
-    plugin: traversability_generator::CameraPreprocessNode
-    params: config/params/camera_preprocess.yaml
-    inputs:
-      - name: image_raw
-        topic: /camera/image_raw
+    # Topics published to downstream processes via DDS
+    dds_outputs:
+      - topic: /camera/image_rect
         msg_type: sensor_msgs/Image
         qos: sensor_data
-      - name: camera_info
-        topic: /camera/camera_info
+      - topic: /camera/camera_info_rect
         msg_type: sensor_msgs/CameraInfo
         qos: reliable
-    outputs:
-      - name: image_proc
-        topic: /camera/proc
-        msg_type: sensor_msgs/Image
-        qos: sensor_data
-      - name: camera_info_proc
-        topic: /camera/proc/camera_info
-        msg_type: sensor_msgs/CameraInfo
-        qos: reliable
-
-  - id: sensor_sync_node
-    type: operator
-    package: traversability_generator
-    plugin: traversability_generator::SensorSyncNode
-    params: config/params/sensor_sync.yaml
-    inputs:
-      - name: points_proc
-        topic: /lidar/proc
+      - topic: /lidar/points_filtered
         msg_type: sensor_msgs/PointCloud2
         qos: sensor_data
-      - name: image_proc
-        topic: /camera/proc
+
+    nodes:
+
+      - id: camera_preprocess_node
+        type: operator
+        package: camera_preprocess
+        plugin: traversability_generator::CameraPreprocessNode
+        params: config/params/camera_preprocess.yaml
+        inputs:
+          - name: image_raw
+            topic: /camera/image_raw
+            msg_type: sensor_msgs/Image
+            qos: sensor_data
+          - name: camera_info
+            topic: /camera/camera_info
+            msg_type: sensor_msgs/CameraInfo
+            qos: reliable
+        outputs:
+          - name: image_rect
+            topic: /camera/image_rect
+            msg_type: sensor_msgs/Image
+            qos: sensor_data
+          - name: camera_info_rect
+            topic: /camera/camera_info_rect
+            msg_type: sensor_msgs/CameraInfo
+            qos: reliable
+
+      - id: lidar_aggregator_node
+        type: operator
+        package: lidar_aggregator
+        plugin: traversability_generator::LidarAggregatorNode
+        params: config/params/lidar_aggregator.yaml
+        inputs:
+          - name: points_raw
+            topic: /lidar/points_raw
+            msg_type: sensor_msgs/PointCloud2
+            qos: sensor_data
+        outputs:
+          - name: points_aggregated
+            topic: /lidar/points_aggregated
+            msg_type: sensor_msgs/PointCloud2
+            qos: sensor_data
+
+      - id: lidar_preprocess_node
+        type: operator
+        package: lidar_preprocess
+        plugin: traversability_generator::LidarPreprocessNode
+        params: config/params/lidar_preprocess.yaml
+        inputs:
+          - name: points_aggregated
+            topic: /lidar/points_aggregated
+            msg_type: sensor_msgs/PointCloud2
+            qos: sensor_data
+          - name: imu
+            topic: /imu/data
+            msg_type: sensor_msgs/Imu
+            qos: sensor_data
+          - name: tf
+            topic: /tf
+            msg_type: tf2_msgs/TFMessage
+            qos: reliable
+        outputs:
+          - name: points_filtered
+            topic: /lidar/points_filtered
+            msg_type: sensor_msgs/PointCloud2
+            qos: sensor_data
+
+
+  # ── 2. semantic_generator ──────────────────────────────────────────────────
+  #
+  #  /lidar/points_filtered  ──> [lidar_ground_filter_node]
+  #                                       │
+  #                         /lidar/points_ground_removed
+  #                                  /         \
+  #                                 v           v
+  #                   [elevation_mapping_node]  [lidar_projection_node]
+  #                          │ (terrain maps →)      │ /lidar/projected_depth
+  #                          │  leaves process        v
+  #                                           [semantic_lifting_node] ──> /terrain/semantic_points →
+  #
+  - id: semantic_generator
+    executable: semantic_generator
+
+    dds_inputs:
+      - topic: /camera/image_rect
         msg_type: sensor_msgs/Image
         qos: sensor_data
-      - name: odom
-        topic: /odom
+        source: sensor_preprocessor
+      - topic: /camera/camera_info_rect
+        msg_type: sensor_msgs/CameraInfo
+        qos: reliable
+        source: sensor_preprocessor
+      - topic: /lidar/points_filtered
+        msg_type: sensor_msgs/PointCloud2
+        qos: sensor_data
+        source: sensor_preprocessor
+      - topic: /ego/odometry
         msg_type: nav_msgs/Odometry
         qos: sensor_data
-    outputs:
-      - name: lidar_synced
-        topic: /sync/lidar_points
+        source: ego_state
+      - topic: /tf
+        msg_type: tf2_msgs/TFMessage
+        qos: reliable
+        source: ego_state
+
+    dds_outputs:
+      - topic: /terrain/semantic_points
         msg_type: sensor_msgs/PointCloud2
         qos: sensor_data
-      - name: image_synced
-        topic: /sync/camera_image
+      - topic: /terrain/elevation_map
         msg_type: sensor_msgs/Image
-        qos: sensor_data
-      - name: ego_pose_synced
-        topic: /sync/ego_pose
-        msg_type: geometry_msgs/PoseStamped
-        qos: sensor_data
+        qos: reliable
+      - topic: /terrain/slope_map
+        msg_type: sensor_msgs/Image
+        qos: reliable
+      - topic: /terrain/roughness_map
+        msg_type: sensor_msgs/Image
+        qos: reliable
+      - topic: /terrain/obstacle_map
+        msg_type: sensor_msgs/Image
+        qos: reliable
 
-  - id: elevation_mapping_node
-    type: operator
-    package: traversability_generator
-    plugin: traversability_generator::ElevationMappingNode
-    params: config/params/elevation_mapping.yaml
-    inputs:
-      - name: lidar_synced
-        topic: /sync/lidar_points
+    nodes:
+
+      - id: lidar_ground_filter_node
+        type: operator
+        package: lidar_ground_filter
+        plugin: traversability_generator::LidarGroundFilterNode
+        params: config/params/lidar_ground_filter.yaml
+        inputs:
+          - name: points_filtered
+            topic: /lidar/points_filtered
+            msg_type: sensor_msgs/PointCloud2
+            qos: sensor_data
+        outputs:
+          - name: points_ground_removed
+            topic: /lidar/points_ground_removed
+            msg_type: sensor_msgs/PointCloud2
+            qos: sensor_data
+
+      - id: elevation_mapping_node
+        type: operator
+        package: elevation_mapping
+        plugin: traversability_generator::ElevationMappingNode
+        params: config/params/elevation_mapping.yaml
+        inputs:
+          - name: points_ground_removed
+            topic: /lidar/points_ground_removed
+            msg_type: sensor_msgs/PointCloud2
+            qos: sensor_data
+          - name: odometry
+            topic: /ego/odometry
+            msg_type: nav_msgs/Odometry
+            qos: sensor_data
+          - name: tf
+            topic: /tf
+            msg_type: tf2_msgs/TFMessage
+            qos: reliable
+        outputs:
+          - name: elevation_map
+            topic: /terrain/elevation_map
+            msg_type: sensor_msgs/Image
+            qos: reliable
+          - name: slope_map
+            topic: /terrain/slope_map
+            msg_type: sensor_msgs/Image
+            qos: reliable
+          - name: roughness_map
+            topic: /terrain/roughness_map
+            msg_type: sensor_msgs/Image
+            qos: reliable
+          - name: obstacle_map
+            topic: /terrain/obstacle_map
+            msg_type: sensor_msgs/Image
+            qos: reliable
+
+      - id: segmentation_node
+        type: operator
+        package: segmentation
+        plugin: traversability_generator::SegmentationNode
+        params: config/params/segmentation.yaml
+        inputs:
+          - name: image_rect
+            topic: /camera/image_rect
+            msg_type: sensor_msgs/Image
+            qos: sensor_data
+        outputs:
+          - name: seg_mask
+            topic: /segmentation/mask
+            msg_type: sensor_msgs/Image
+            qos: sensor_data
+
+      - id: lidar_projection_node
+        type: operator
+        package: lidar_projection
+        plugin: traversability_generator::LidarProjectionNode
+        params: config/params/lidar_projection.yaml
+        inputs:
+          - name: points_ground_removed
+            topic: /lidar/points_ground_removed
+            msg_type: sensor_msgs/PointCloud2
+            qos: sensor_data
+        outputs:
+          - name: projected_depth
+            topic: /lidar/projected_depth
+            msg_type: sensor_msgs/Image
+            qos: sensor_data
+
+      - id: semantic_lifting_node
+        type: operator
+        package: semantic_lifting
+        plugin: traversability_generator::SemanticLiftingNode
+        params: config/params/semantic_lifting.yaml
+        inputs:
+          - name: seg_mask
+            topic: /segmentation/mask
+            msg_type: sensor_msgs/Image
+            qos: sensor_data
+          - name: projected_depth
+            topic: /lidar/projected_depth
+            msg_type: sensor_msgs/Image
+            qos: sensor_data
+          - name: camera_info_rect
+            topic: /camera/camera_info_rect
+            msg_type: sensor_msgs/CameraInfo
+            qos: reliable
+        outputs:
+          - name: semantic_points
+            topic: /terrain/semantic_points
+            msg_type: sensor_msgs/PointCloud2
+            qos: sensor_data
+
+
+  # ── 3. terrain_modeler ─────────────────────────────────────────────────────
+  #
+  #  terrain maps (DDS from semantic_generator) ──> [bev_fusion_node]
+  #  /terrain/semantic_points (DDS)             ──> [bev_fusion_node]
+  #                                                        │ /bev/feature_grid
+  #                                                        ▼
+  #                                           [temporal_grid_fusion_node]
+  #                                                        │ /bev/stable_grid
+  #                                                        ▼
+  #                                           [traversability_costmap_node]
+  #
+  - id: terrain_modeler
+    executable: terrain_modeler
+
+    dds_inputs:
+      - topic: /terrain/elevation_map
+        msg_type: sensor_msgs/Image
+        qos: reliable
+        source: semantic_generator
+      - topic: /terrain/slope_map
+        msg_type: sensor_msgs/Image
+        qos: reliable
+        source: semantic_generator
+      - topic: /terrain/roughness_map
+        msg_type: sensor_msgs/Image
+        qos: reliable
+        source: semantic_generator
+      - topic: /terrain/obstacle_map
+        msg_type: sensor_msgs/Image
+        qos: reliable
+        source: semantic_generator
+      - topic: /terrain/semantic_points
         msg_type: sensor_msgs/PointCloud2
         qos: sensor_data
-      - name: odom
-        topic: /odom
-        msg_type: nav_msgs/Odometry
-        qos: sensor_data
-    outputs:
-      - name: elevation_map
-        topic: /elevation_map
-        msg_type: grid_map_msgs/GridMap
-        qos: reliable
+        source: semantic_generator
 
-  - id: depth_generation_node
-    type: operator
-    package: traversability_generator
-    plugin: traversability_generator::DepthGenerationNode
-    params: config/params/depth_generation.yaml
-    inputs:
-      - name: lidar_synced
-        topic: /sync/lidar_points
-        msg_type: sensor_msgs/PointCloud2
-        qos: sensor_data
-      - name: image_synced
-        topic: /sync/camera_image
-        msg_type: sensor_msgs/Image
-        qos: sensor_data
-      - name: camera_info_proc
-        topic: /camera/proc/camera_info
-        msg_type: sensor_msgs/CameraInfo
+    dds_outputs:
+      - topic: /world/traversability_grid
+        msg_type: nav_msgs/OccupancyGrid
         qos: reliable
-    outputs:
-      - name: depth_dense
-        topic: /depth/dense
-        msg_type: sensor_msgs/Image
-        qos: sensor_data
-
-  - id: segmentation_node
-    type: operator
-    package: traversability_generator
-    plugin: traversability_generator::SegmentationNode
-    params: config/params/segmentation.yaml
-    inputs:
-      - name: image_synced
-        topic: /sync/camera_image
-        msg_type: sensor_msgs/Image
-        qos: sensor_data
-      - name: depth_dense
-        topic: /depth/dense
-        msg_type: sensor_msgs/Image
-        qos: sensor_data
-    outputs:
-      - name: seg_mask
-        topic: /seg/mask
-        msg_type: sensor_msgs/Image
-        qos: sensor_data
-
-  - id: bev_projection_node
-    type: operator
-    package: traversability_generator
-    plugin: traversability_generator::BevProjectionNode
-    params: config/params/bev_projection.yaml
-    inputs:
-      - name: seg_mask
-        topic: /seg/mask
-        msg_type: sensor_msgs/Image
-        qos: sensor_data
-      - name: depth_dense
-        topic: /depth/dense
-        msg_type: sensor_msgs/Image
-        qos: sensor_data
-      - name: elevation_map
-        topic: /elevation_map
-        msg_type: grid_map_msgs/GridMap
-        qos: reliable
-    outputs:
-      - name: bev_semantic_grid
-        topic: /bev/semantic_grid
+      - topic: /planner/costmap
         msg_type: nav_msgs/OccupancyGrid
         qos: reliable
 
-  - id: costmap_fusion_node
-    type: operator
-    package: traversability_generator
-    plugin: traversability_generator::CostmapFusionNode
-    params: config/params/costmap_fusion.yaml
-    inputs:
-      - name: bev_semantic_grid
-        topic: /bev/semantic_grid
-        msg_type: nav_msgs/OccupancyGrid
-        qos: reliable
-      - name: elevation_map
-        topic: /elevation_map
-        msg_type: grid_map_msgs/GridMap
-        qos: reliable
-    outputs:
-      - name: traversal_costmap
-        topic: /costmap/traversal
-        msg_type: nav_msgs/OccupancyGrid
-        qos: reliable
-      - name: elevation_out
-        topic: /elevation_map/output
-        msg_type: grid_map_msgs/GridMap
-        qos: reliable
+    nodes:
 
-  # ── Sink ─────────────────────────────────────────────────────────────────
+      - id: bev_fusion_node
+        type: operator
+        package: bev_fusion
+        plugin: traversability_generator::BevFusionNode
+        params: config/params/bev_fusion.yaml
+        inputs:
+          - name: elevation_map
+            topic: /terrain/elevation_map
+            msg_type: sensor_msgs/Image
+            qos: reliable
+          - name: slope_map
+            topic: /terrain/slope_map
+            msg_type: sensor_msgs/Image
+            qos: reliable
+          - name: roughness_map
+            topic: /terrain/roughness_map
+            msg_type: sensor_msgs/Image
+            qos: reliable
+          - name: obstacle_map
+            topic: /terrain/obstacle_map
+            msg_type: sensor_msgs/Image
+            qos: reliable
+          - name: semantic_points
+            topic: /terrain/semantic_points
+            msg_type: sensor_msgs/PointCloud2
+            qos: sensor_data
+        outputs:
+          - name: feature_grid
+            topic: /bev/feature_grid
+            msg_type: sensor_msgs/Image
+            qos: reliable
 
-  - id: planning_stack
-    type: sink
-    inputs:
-      - name: traversal_costmap
-        topic: /costmap/traversal
-        msg_type: nav_msgs/OccupancyGrid
-        qos: reliable
-      - name: elevation_out
-        topic: /elevation_map/output
-        msg_type: grid_map_msgs/GridMap
-        qos: reliable
+      - id: temporal_grid_fusion_node
+        type: operator
+        package: temporal_grid
+        plugin: traversability_generator::TemporalGridFusionNode
+        params: config/params/temporal_grid.yaml
+        inputs:
+          - name: feature_grid
+            topic: /bev/feature_grid
+            msg_type: sensor_msgs/Image
+            qos: reliable
+        outputs:
+          - name: stable_grid
+            topic: /bev/stable_grid
+            msg_type: sensor_msgs/Image
+            qos: reliable
+
+      - id: traversability_costmap_node
+        type: operator
+        package: traversability_costmap
+        plugin: traversability_generator::TraversabilityCostmapNode
+        params: config/params/traversability_costmap.yaml
+        inputs:
+          - name: stable_grid
+            topic: /bev/stable_grid
+            msg_type: sensor_msgs/Image
+            qos: reliable
+        outputs:
+          - name: traversability_grid
+            topic: /world/traversability_grid
+            msg_type: nav_msgs/OccupancyGrid
+            qos: reliable
+          - name: planner_costmap
+            topic: /planner/costmap
+            msg_type: nav_msgs/OccupancyGrid
+            qos: reliable

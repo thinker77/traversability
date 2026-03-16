@@ -1,0 +1,16 @@
+temporal_grid_node:
+  ros__parameters:
+    # Number of past frames to accumulate
+    history_length: 10
+
+    # Decay factor applied to confidence of older observations (per frame)
+    confidence_decay: 0.9
+
+    # Minimum confidence to retain a cell (below this → unknown)
+    min_confidence_threshold: 0.1
+
+    # Maximum warp distance for temporal registration (meters)
+    max_warp_distance_m: 5.0
+
+    # Target frame for grid alignment
+    target_frame: "odom"

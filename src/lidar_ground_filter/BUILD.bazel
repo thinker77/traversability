@@ -1,0 +1,20 @@
+load("@rules_ros2//ros2:cc_defs.bzl", "ros2_cc_binary", "ros2_cc_library")
+
+ros2_cc_library(
+    name = "lidar_ground_filter_node",
+    srcs = ["src/lidar_ground_filter_node.cpp"],
+    hdrs = ["include/lidar_ground_filter/lidar_ground_filter_node.hpp"],
+    includes = ["include"],
+    deps = [
+        "@ros2_rclcpp//:rclcpp",
+        "@ros2_rclcpp_components//:rclcpp_components",
+        "@ros2_sensor_msgs//:sensor_msgs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+ros2_cc_binary(
+    name = "lidar_ground_filter_main",
+    srcs = ["src/main.cpp"],
+    deps = [":lidar_ground_filter_node"],
+)

@@ -1,0 +1,7 @@
+traversability_costmap_node:
+  ros__parameters:
+    # Traversability scores above this threshold are marked as lethal obstacles
+    lethal_cost_threshold: 0.7
+
+    # Radius (m) used to inflate lethal obstacles in the planner costmap
+    inflation_radius_m: 0.5

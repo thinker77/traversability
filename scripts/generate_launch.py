@@ -21,7 +21,6 @@ LAUNCH_HEADER = '''\
 # Source: {source}
 # Do not edit by hand — edit config/dataflow.yaml and re-run generate_launch.py
 
-import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -82,6 +81,11 @@ def snake_to_camel(name: str) -> str:
     return "".join(word.capitalize() for word in name.split("_"))
 
 
+def node_package(node_id: str) -> str:
+    """Return the ament package name for a node ID (strips trailing _node)."""
+    return node_id[:-5] if node_id.endswith("_node") else node_id
+
+
 def render_composable_node(node: dict) -> str:
     node_id = node["id"]
     plugin = node.get(
@@ -89,6 +93,7 @@ def render_composable_node(node: dict) -> str:
         f"traversability_generator::{snake_to_camel(node_id)}",
     )
     params_file = node.get("params", "")
+    package = node.get("package") or node_package(node_id)
 
     if params_file:
         params = (
@@ -104,7 +109,7 @@ def render_composable_node(node: dict) -> str:
 
     return (
         f'        ComposableNode(\n'
-        f'            package="traversability_generator",\n'
+        f'            package="{package}",\n'
         f'            plugin="{plugin}",\n'
         f'            name="{node_id}",\n'
         f'            namespace="",\n'
@@ -120,7 +125,15 @@ def generate(dataflow_path: Path, output_path: Path) -> None:
     with open(dataflow_path) as f:
         dataflow = yaml.safe_load(f)
 
-    operators = [n for n in dataflow["nodes"] if n["type"] == "operator"]
+    # Support both flat schema (nodes[]) and process schema (processes[].nodes)
+    if "processes" in dataflow:
+        operators = []
+        for proc in dataflow["processes"]:
+            for node in proc.get("nodes", []):
+                if node.get("type", "operator") == "operator":
+                    operators.append(node)
+    else:
+        operators = [n for n in dataflow["nodes"] if n["type"] == "operator"]
 
     lines = [LAUNCH_HEADER.format(source=dataflow_path)]
     lines.append("    composable_nodes = [\n")
@@ -130,7 +143,7 @@ def generate(dataflow_path: Path, output_path: Path) -> None:
     lines.append(LAUNCH_FOOTER)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("".join(lines))
+    output_path.write_text("".join(lines), encoding="utf-8")
     print(f"[generate_launch] wrote {output_path}")
 
 

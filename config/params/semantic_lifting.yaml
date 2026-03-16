@@ -1,0 +1,13 @@
+semantic_lifting_node:
+  ros__parameters:
+    # Target frame for lifted semantic point cloud
+    target_frame: "odom"
+
+    # Maximum depth to lift semantics (meters)
+    max_lift_depth_m: 30.0
+
+    # Minimum confidence threshold for lifting
+    min_seg_confidence: 0.5
+
+    # Number of frustum samples for uncertainty estimation
+    frustum_sample_count: 1000

@@ -1,0 +1,20 @@
+load("@rules_ros2//ros2:cc_defs.bzl", "ros2_cc_binary", "ros2_cc_library")
+
+ros2_cc_library(
+    name = "semantic_lifting_node",
+    srcs = ["src/semantic_lifting_node.cpp"],
+    hdrs = ["include/semantic_lifting/semantic_lifting_node.hpp"],
+    includes = ["include"],
+    deps = [
+        "@ros2_rclcpp//:rclcpp",
+        "@ros2_rclcpp_components//:rclcpp_components",
+        "@ros2_sensor_msgs//:sensor_msgs",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+ros2_cc_binary(
+    name = "semantic_lifting_main",
+    srcs = ["src/main.cpp"],
+    deps = [":semantic_lifting_node"],
+)

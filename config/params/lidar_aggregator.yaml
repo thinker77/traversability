@@ -1,0 +1,4 @@
+lidar_aggregator_node:
+  ros__parameters:
+    # Number of consecutive raw scans to aggregate into one output cloud
+    num_scans: 3

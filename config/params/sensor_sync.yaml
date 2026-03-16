@@ -1,8 +1,0 @@
-sensor_sync_node:
-  ros__parameters:
-    # ApproximateTimeSynchronizer tolerance
-    sync_slop_sec: 0.05
-    sync_queue_size: 10
-
-    # Pose interpolation window
-    odom_queue_size: 200

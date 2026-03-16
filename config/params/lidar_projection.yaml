@@ -1,0 +1,8 @@
+lidar_projection_node:
+  ros__parameters:
+    # Output depth image resolution (must match camera sensor)
+    image_height: 480
+    image_width:  640
+
+    # Points beyond this range are discarded
+    max_depth_m: 80.0
