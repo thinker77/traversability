@@ -19,7 +19,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     use_sim_time = LaunchConfiguration("use_sim_time")
 
-    # ── CycloneDDS shared memory (zero-copy for PointCloud2/Image on localhost)
+    # ── CycloneDDS (zero-copy intra-host via shared memory when enabled)
     cyclone_cfg = SetEnvironmentVariable(
         "CYCLONEDDS_URI",
         PathJoinSubstitution([pkg_share, "config/cyclonedds.xml"]),
@@ -28,12 +28,18 @@ def generate_launch_description() -> LaunchDescription:
         "RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp"
     )
 
-    # ── Composable nodes (auto-generated from dataflow.yaml) ──────────────
-    composable_nodes = [
+    # ── One ComposableNodeContainer per process (auto-generated from dataflow.yaml) ──
+    # ── camera_preprocessor
+    camera_preprocessor_container = ComposableNodeContainer(
+        name="camera_preprocessor_container",
+        namespace="",
+        package="rclcpp_components",
+        executable="component_container",
+        composable_node_descriptions=[
         ComposableNode(
-            package="traversability_generator",
-            plugin="traversability_generator::CameraPreprocessNode",
-            name="camera_preprocess_node",
+            package="camera_preprocess",
+            plugin="traversability_generator::CameraBranchNode",
+            name="camera_branch",
             namespace="",
             parameters=[
                 {"use_sim_time": use_sim_time},
@@ -47,7 +53,31 @@ def generate_launch_description() -> LaunchDescription:
             ],
         ),
         ComposableNode(
-            package="traversability_generator",
+            package="segmentation",
+            plugin="traversability_generator::SemanticSegmentationNode",
+            name="semantic_segmentation_node",
+            namespace="",
+            parameters=[
+                {"use_sim_time": use_sim_time},
+                PathJoinSubstitution([pkg_share, "config/params/segmentation.yaml"]),
+            ],
+            remappings=[
+                ("image_rect", "/camera/image_rect"),
+                ("seg_mask", "/segmentation/mask"),
+            ],
+        ),
+        ],
+        output="screen",
+    )
+    # ── lidar_preprocessor
+    lidar_preprocessor_container = ComposableNodeContainer(
+        name="lidar_preprocessor_container",
+        namespace="",
+        package="rclcpp_components",
+        executable="component_container",
+        composable_node_descriptions=[
+        ComposableNode(
+            package="lidar_aggregator",
             plugin="traversability_generator::LidarAggregatorNode",
             name="lidar_aggregator_node",
             namespace="",
@@ -61,7 +91,7 @@ def generate_launch_description() -> LaunchDescription:
             ],
         ),
         ComposableNode(
-            package="traversability_generator",
+            package="lidar_preprocess",
             plugin="traversability_generator::LidarPreprocessNode",
             name="lidar_preprocess_node",
             namespace="",
@@ -77,54 +107,27 @@ def generate_launch_description() -> LaunchDescription:
             ],
         ),
         ComposableNode(
-            package="traversability_generator",
-            plugin="traversability_generator::LidarGroundFilterNode",
-            name="lidar_ground_filter_node",
+            package="terrain_model",
+            plugin="traversability_generator::TerrainModelNode",
+            name="terrain_model_node",
             namespace="",
             parameters=[
                 {"use_sim_time": use_sim_time},
-                PathJoinSubstitution([pkg_share, "config/params/lidar_ground_filter.yaml"]),
+                PathJoinSubstitution([pkg_share, "config/params/terrain_model.yaml"]),
             ],
             remappings=[
                 ("points_filtered", "/lidar/points_filtered"),
-                ("points_ground_removed", "/lidar/points_ground_removed"),
-            ],
-        ),
-        ComposableNode(
-            package="traversability_generator",
-            plugin="traversability_generator::ElevationMappingNode",
-            name="elevation_mapping_node",
-            namespace="",
-            parameters=[
-                {"use_sim_time": use_sim_time},
-                PathJoinSubstitution([pkg_share, "config/params/elevation_mapping.yaml"]),
-            ],
-            remappings=[
-                ("points_ground_removed", "/lidar/points_ground_removed"),
                 ("odometry", "/ego/odometry"),
                 ("tf", "/tf"),
                 ("elevation_map", "/terrain/elevation_map"),
                 ("slope_map", "/terrain/slope_map"),
                 ("roughness_map", "/terrain/roughness_map"),
                 ("obstacle_map", "/terrain/obstacle_map"),
+                ("points_no_tall_objects", "/lidar/points_no_tall_objects"),
             ],
         ),
         ComposableNode(
-            package="traversability_generator",
-            plugin="traversability_generator::SegmentationNode",
-            name="segmentation_node",
-            namespace="",
-            parameters=[
-                {"use_sim_time": use_sim_time},
-                PathJoinSubstitution([pkg_share, "config/params/segmentation.yaml"]),
-            ],
-            remappings=[
-                ("image_rect", "/camera/image_rect"),
-                ("seg_mask", "/segmentation/mask"),
-            ],
-        ),
-        ComposableNode(
-            package="traversability_generator",
+            package="lidar_projection",
             plugin="traversability_generator::LidarProjectionNode",
             name="lidar_projection_node",
             namespace="",
@@ -133,12 +136,23 @@ def generate_launch_description() -> LaunchDescription:
                 PathJoinSubstitution([pkg_share, "config/params/lidar_projection.yaml"]),
             ],
             remappings=[
-                ("points_ground_removed", "/lidar/points_ground_removed"),
+                ("points_no_tall_objects", "/lidar/points_no_tall_objects"),
+                ("points_projection", "/lidar/points_projection"),
                 ("projected_depth", "/lidar/projected_depth"),
             ],
         ),
+        ],
+        output="screen",
+    )
+    # ── terrain_modeler
+    terrain_modeler_container = ComposableNodeContainer(
+        name="terrain_modeler_container",
+        namespace="",
+        package="rclcpp_components",
+        executable="component_container",
+        composable_node_descriptions=[
         ComposableNode(
-            package="traversability_generator",
+            package="semantic_lifting",
             plugin="traversability_generator::SemanticLiftingNode",
             name="semantic_lifting_node",
             namespace="",
@@ -149,12 +163,12 @@ def generate_launch_description() -> LaunchDescription:
             remappings=[
                 ("seg_mask", "/segmentation/mask"),
                 ("projected_depth", "/lidar/projected_depth"),
-                ("camera_info_rect", "/camera/camera_info_rect"),
+                ("tf", "/tf"),
                 ("semantic_points", "/terrain/semantic_points"),
             ],
         ),
         ComposableNode(
-            package="traversability_generator",
+            package="bev_fusion",
             plugin="traversability_generator::BevFusionNode",
             name="bev_fusion_node",
             namespace="",
@@ -172,7 +186,7 @@ def generate_launch_description() -> LaunchDescription:
             ],
         ),
         ComposableNode(
-            package="traversability_generator",
+            package="temporal_grid",
             plugin="traversability_generator::TemporalGridFusionNode",
             name="temporal_grid_fusion_node",
             namespace="",
@@ -182,11 +196,12 @@ def generate_launch_description() -> LaunchDescription:
             ],
             remappings=[
                 ("feature_grid", "/bev/feature_grid"),
+                ("odometry", "/ego/odometry"),
                 ("stable_grid", "/bev/stable_grid"),
             ],
         ),
         ComposableNode(
-            package="traversability_generator",
+            package="traversability_costmap",
             plugin="traversability_generator::TraversabilityCostmapNode",
             name="traversability_costmap_node",
             namespace="",
@@ -196,18 +211,10 @@ def generate_launch_description() -> LaunchDescription:
             ],
             remappings=[
                 ("stable_grid", "/bev/stable_grid"),
-                ("traversability_grid", "/world/traversability_grid"),
-                ("planner_costmap", "/planner/costmap"),
+                ("costmap", "/costmap"),
             ],
         ),
-    ]
-
-    container = ComposableNodeContainer(
-        name="traversability_container",
-        namespace="",
-        package="rclcpp_components",
-        executable="component_container",
-        composable_node_descriptions=composable_nodes,
+        ],
         output="screen",
     )
 
@@ -215,5 +222,7 @@ def generate_launch_description() -> LaunchDescription:
         use_sim_time_arg,
         rmw_impl,
         cyclone_cfg,
-        container,
+        camera_preprocessor_container,
+        lidar_preprocessor_container,
+        terrain_modeler_container,
     ])

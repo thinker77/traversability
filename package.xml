@@ -10,11 +10,10 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <exec_depend>camera_preprocess</exec_depend>
+  <exec_depend>segmentation</exec_depend>
   <exec_depend>lidar_aggregator</exec_depend>
   <exec_depend>lidar_preprocess</exec_depend>
-  <exec_depend>lidar_ground_filter</exec_depend>
-  <exec_depend>elevation_mapping</exec_depend>
-  <exec_depend>segmentation</exec_depend>
+  <exec_depend>terrain_model</exec_depend>
   <exec_depend>lidar_projection</exec_depend>
   <exec_depend>semantic_lifting</exec_depend>
   <exec_depend>bev_fusion</exec_depend>

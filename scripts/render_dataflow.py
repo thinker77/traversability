@@ -5,11 +5,12 @@ render_dataflow.py
 Reads config/dataflow.yaml (process-based schema) and saves two PNG diagrams:
 
   build/dataflow_processes.png  – process-level overview
-                                  (3 executables + planner sink, DDS arrows labelled with topics)
+                                  (camera_preprocessor / lidar_preprocessor / terrain_modeler,
+                                   DDS arrows labelled with topics)
 
   build/dataflow_nodes.png      – node-level detail
                                   (nodes inside each process, intra-process topic arrows,
-                                   DDS arrows between processes on the right margin)
+                                   DDS inputs/exits labelled on the band margins)
 
 Requirements:
     pip install matplotlib pyyaml
@@ -221,17 +222,17 @@ def render_node_detail(dataflow: dict, out_path: Path, dpi: int) -> None:
     """
     Custom hardcoded layout matching the exact pipeline topology:
 
-      sensor_preprocessor  – two parallel tracks: camera (left) | lidar (right)
-      semantic_generator   – fan-in: segmentation + lidar_projection → semantic_lifting
-      terrain_modeler      – linear chain: elevation → bev → temporal → costmap
+      camera_preprocessor  – vertical chain: camera_branch → semantic_segmentation_node
+      lidar_preprocessor   – vertical chain: aggregator → preprocess → terrain_model → projection
+      terrain_modeler      – semantic_lifting → bev_fusion → temporal_grid_fusion → traversability_costmap
     """
     processes = dataflow["processes"]
     proc_ids  = [p["id"] for p in processes]
 
     # ── Band geometry ──────────────────────────────────────────────────────────
     BAND_W   = 22.0
-    BAND_H   = {"sensor_preprocessor": 7.2,
-                "semantic_generator":  12.0,
+    BAND_H   = {"camera_preprocessor": 6.0,
+                "lidar_preprocessor":  9.5,
                 "terrain_modeler":     6.5}
     BAND_GAP = 1.8
     EXT_W, EXT_H = 3.6, 0.52
@@ -319,165 +320,140 @@ def render_node_detail(dataflow: dict, out_path: Path, dpi: int) -> None:
                 fontfamily="monospace", zorder=7)
 
     # ══════════════════════════════════════════════════════════════════════════
-    # 1. sensor_preprocessor
+    # 1. camera_preprocessor
     #
-    #  [camera hardware] ──/camera/image_raw          ──> [camera_preprocess_node]
-    #                    ──/camera/camera_info                  │
-    #                                                           ├──> /camera/image_rect       →
-    #                                                           └──> /camera/camera_info_rect →
-    #
-    #  [lidar hardware]  ──/lidar/*/points_raw (×3)   ──> [lidar_aggregator_node]
-    #                                                          │ /lidar/points_aggregated
-    #                                                          ▼
-    #                                                  [lidar_preprocess_node]
-    #                                                          │
-    #                                                          └──> /lidar/points_filtered    →
+    #  [camera hardware] ──/camera/image_raw ──> [camera_branch]
+    #                    ──/camera/camera_info        ├──> /camera/image_rect       →
+    #                                                 └──> /camera/camera_info_rect →
+    #                                                 │  /camera/image_rect (intra)
+    #                                                 ▼
+    #                                    [semantic_segmentation_node]
+    #                                                 └──> /segmentation/mask →
     # ══════════════════════════════════════════════════════════════════════════
-    band_bg("sensor_preprocessor")
-    bt = band_top["sensor_preprocessor"]
+    band_bg("camera_preprocessor")
+    bt = band_top["camera_preprocessor"]
 
-    CX = 5.5    # camera track x
+    CX = 7.0
     ext(CX, bt - 0.76, "camera hardware")
     arr(CX, bt - 0.76 - EXT_H / 2,
-        CX, bt - 2.9 + NH / 2,
+        CX, bt - 2.5 + NH / 2,
         topic="/camera/image_raw\n/camera/camera_info", ldx=0.14)
-    nd(CX, bt - 2.9, "camera_preprocess_node")
-    exit_r(CX, bt - 2.9, "/camera/image_rect",      dy=+0.24)
-    exit_r(CX, bt - 2.9, "/camera/camera_info_rect", dy=-0.24)
+    nd(CX, bt - 2.5, "camera_branch")
+    exit_r(CX, bt - 2.5, "/camera/image_rect",       dy=+0.24)
+    exit_r(CX, bt - 2.5, "/camera/camera_info_rect",  dy=-0.24)
+    arr(CX, bt - 2.5 - NH / 2,
+        CX, bt - 4.8 + NH / 2,
+        topic="/camera/image_rect", ldx=0.14)
+    nd(CX, bt - 4.8, "semantic_segmentation_node")
+    exit_r(CX, bt - 4.8, "/segmentation/mask")
 
-    LX = 15.0   # lidar track x
+    # ══════════════════════════════════════════════════════════════════════════
+    # 2. lidar_preprocessor
+    #
+    #  [lidar hardware] ──> [lidar_aggregator_node]
+    #                              │ /lidar/points_aggregated
+    #                              ▼
+    #                    [lidar_preprocess_node] ◄── /imu/data  /tf
+    #                              │ /lidar/points_filtered
+    #                              ▼
+    #                      [terrain_model_node]  ◄── /ego/odometry  /tf
+    #         ──> /terrain/{elevation,slope,roughness,obstacle}_map
+    #                              │ /lidar/points_no_tall_objects
+    #                              ▼
+    #                    [lidar_projection_node]
+    #         ──> /lidar/points_projection
+    #         ──> /lidar/projected_depth
+    # ══════════════════════════════════════════════════════════════════════════
+    band_bg("lidar_preprocessor")
+    bt = band_top["lidar_preprocessor"]
+
+    LX = 6.0
     ext(LX, bt - 0.76, "lidar hardware")
     arr(LX, bt - 0.76 - EXT_H / 2,
-        LX, bt - 2.6 + NH / 2,
-        topic="/lidar/{front,left,right}/points_raw", ldx=0.14)
-    nd(LX, bt - 2.6, "lidar_aggregator_node")
-    arr(LX, bt - 2.6 - NH / 2,
-        LX, bt - 4.9 + NH / 2,
+        LX, bt - 2.2 + NH / 2,
+        topic="/lidar/points_raw", ldx=0.14)
+    nd(LX, bt - 2.2, "lidar_aggregator_node")
+    arr(LX, bt - 2.2 - NH / 2,
+        LX, bt - 3.9 + NH / 2,
         topic="/lidar/points_aggregated", ldx=0.14)
-    nd(LX, bt - 4.9, "lidar_preprocess_node")
-    exit_r(LX, bt - 4.9, "/lidar/points_filtered")
+    nd(LX, bt - 3.9, "lidar_preprocess_node")
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # 2. semantic_generator
-    #
-    #  /lidar/points_filtered (DDS) ──> [lidar_ground_filter_node]
-    #                                            │ /lidar/points_ground_removed
-    #                                       /         \
-    #                                      v           v
-    #                        [elevation_mapping_node]  [lidar_projection_node]
-    #                               │ (terrain maps →)      │ /lidar/projected_depth
-    #                               │  exits process         v
-    #  /camera/image_rect (DDS) ──> [segmentation_node]  [semantic_lifting_node] <── /camera/camera_info_rect (DDS)
-    #                                      │ /segmentation/mask    ^
-    #                                      └───────────────────────┘
-    #                                                    [semantic_lifting_node] ──> /terrain/semantic_points →
-    # ══════════════════════════════════════════════════════════════════════════
-    band_bg("semantic_generator")
-    bt = band_top["semantic_generator"]
+    # /imu/data + /tf → lidar_preprocess_node (from left band edge)
+    dds_in(0.0, bt - 3.9, LX - NW / 2, bt - 3.9,
+           "/imu/data   /tf", ldx=0.08, fs=4.8)
 
-    # Column x positions
-    GF_X  = 4.5    # lidar_ground_filter_node
-    ELV_X = 2.5    # elevation_mapping_node  (below-left of GF)
-    LPJ_X = 9.5    # lidar_projection_node   (below-right of GF)
-    SEG_X = 9.5    # segmentation_node       (same column as LPJ, higher up)
-    SLF_X = 17.5   # semantic_lifting_node
+    arr(LX, bt - 3.9 - NH / 2,
+        LX, bt - 5.7 + NH / 2,
+        topic="/lidar/points_filtered", ldx=0.14)
+    nd(LX, bt - 5.7, "terrain_model_node")
 
-    # Row y positions
-    GF_Y  = bt - 2.2
-    SEG_Y = bt - 5.2
-    ELV_Y = bt - 10.2
-    LPJ_Y = bt - 7.8
-    SLF_Y = bt - 5.5
+    # /ego/odometry + /tf → terrain_model_node (from left band edge)
+    dds_in(0.0, bt - 5.7, LX - NW / 2, bt - 5.7,
+           "/ego/odometry   /tf", ldx=0.08, fs=4.8)
 
-    # ── DDS inputs ────────────────────────────────────────────────────────────
-    # /lidar/points_filtered → lidar_ground_filter_node
-    dds_in(GF_X, bt, GF_X, GF_Y + NH / 2, "/lidar/points_filtered")
+    # Terrain map exits (right)
+    exit_r(LX, bt - 5.7, "/terrain/elevation_map",  dy=+0.42)
+    exit_r(LX, bt - 5.7, "/terrain/slope_map",      dy=+0.14)
+    exit_r(LX, bt - 5.7, "/terrain/roughness_map",  dy=-0.14)
+    exit_r(LX, bt - 5.7, "/terrain/obstacle_map",   dy=-0.42)
 
-    # /ego/odometry + /tf → elevation_mapping_node (from left band edge)
-    dds_in(0.0, ELV_Y + 0.2, ELV_X - NW / 2, ELV_Y + 0.2,
-           "/ego/odometry\n/tf", ldx=0.08, fs=5.0)
-
-    # /camera/image_rect → segmentation_node
-    dds_in(SEG_X, bt, SEG_X, SEG_Y + NH / 2, "/camera/image_rect")
-
-    # /camera/camera_info_rect → semantic_lifting_node
-    dds_in(SLF_X + 0.7, bt, SLF_X, SLF_Y + NH / 2,
-           "/camera/camera_info_rect", rad=0.1, ldx=0.14)
-
-    # ── Nodes ─────────────────────────────────────────────────────────────────
-    nd(GF_X,  GF_Y,  "lidar_ground_filter_node")
-    nd(ELV_X, ELV_Y, "elevation_mapping_node")
-    nd(SEG_X, SEG_Y, "segmentation_node")
-    nd(LPJ_X, LPJ_Y, "lidar_projection_node")
-    nd(SLF_X, SLF_Y, "semantic_lifting_node")
-
-    # ── Intra-process edges ───────────────────────────────────────────────────
-    # lidar_ground_filter → elevation_mapping  (down, nearly vertical)
-    arr(GF_X, GF_Y - NH / 2,
-        ELV_X + NW / 2, ELV_Y,
-        topic="/lidar/points_ground_removed", rad=-0.15, ldx=0.14, lha="left", ldy=0.0)
-
-    # lidar_ground_filter → lidar_projection  (down-right diagonal)
-    arr(GF_X + NW / 2, GF_Y,
-        LPJ_X - NW / 2, LPJ_Y,
-        topic="/lidar/points_ground_removed", rad=0.1, ldx=0.12)
-
-    # segmentation_node → semantic_lifting_node
-    arr(SEG_X + NW / 2, SEG_Y,
-        SLF_X - NW / 2, SLF_Y,
-        topic="/segmentation/mask", rad=-0.1, ldx=0.12, ldy=0.3)
-
-    # lidar_projection → semantic_lifting_node
-    arr(LPJ_X + NW / 2, LPJ_Y,
-        SLF_X - NW / 2, SLF_Y,
-        topic="/lidar/projected_depth", rad=0.15, ldx=0.12, ldy=-0.3)
-
-    # ── Exits ─────────────────────────────────────────────────────────────────
-    exit_r(ELV_X, ELV_Y, "/terrain/elevation_map",  dy=+0.42)
-    exit_r(ELV_X, ELV_Y, "/terrain/slope_map",      dy=+0.14)
-    exit_r(ELV_X, ELV_Y, "/terrain/roughness_map",  dy=-0.14)
-    exit_r(ELV_X, ELV_Y, "/terrain/obstacle_map",   dy=-0.42)
-    exit_r(SLF_X, SLF_Y, "/terrain/semantic_points")
+    arr(LX, bt - 5.7 - NH / 2,
+        LX, bt - 7.6 + NH / 2,
+        topic="/lidar/points_no_tall_objects", ldx=0.14)
+    nd(LX, bt - 7.6, "lidar_projection_node")
+    exit_r(LX, bt - 7.6, "/lidar/points_projection", dy=+0.24)
+    exit_r(LX, bt - 7.6, "/lidar/projected_depth",   dy=-0.24)
 
     # ══════════════════════════════════════════════════════════════════════════
     # 3. terrain_modeler
     #
-    #  terrain maps  (DDS from semantic_generator) ──> [bev_fusion_node]
-    #  /terrain/semantic_points (DDS)              ──> [bev_fusion_node]
-    #  [bev_fusion_node] ──/bev/feature_grid──> [temporal_grid_fusion_node]
-    #  [temporal_grid_fusion_node] ──/bev/stable_grid──> [traversability_costmap_node]
-    #  [traversability_costmap_node]
-    #     ├──> /world/traversability_grid →
-    #     └──> /planner/costmap           →
+    #  /segmentation/mask (DDS)    ──> [semantic_lifting_node]
+    #  /lidar/projected_depth (DDS) ──>          │ /terrain/semantic_points
+    #  /tf (DDS)                   ──>           │
+    #  terrain maps (DDS)          ──> [bev_fusion_node]
+    #  /ego/odometry (DDS)         ──> [temporal_grid_fusion_node]
+    #
+    #  semantic_lifting → bev_fusion → temporal_grid_fusion → traversability_costmap
+    #                                                                  └──> /costmap →
     # ══════════════════════════════════════════════════════════════════════════
     band_bg("terrain_modeler")
     bt = band_top["terrain_modeler"]
 
-    BEV_X = 5.5;  TMP_X = 12.0;  TRV_X = 18.5
+    SLF_X = 3.0;  BEV_X = 8.5;  TMP_X = 14.0;  TRV_X = 19.5
     NODE_Y = bt - 3.5
 
+    nd(SLF_X, NODE_Y, "semantic_lifting_node")
     nd(BEV_X, NODE_Y, "bev_fusion_node")
     nd(TMP_X, NODE_Y, "temporal_grid_fusion_node")
     nd(TRV_X, NODE_Y, "traversability_costmap_node")
 
-    # DDS inputs (all 5 topics enter bev_fusion_node from the top)
-    dds_in(BEV_X - 0.5, bt, BEV_X, NODE_Y + NH / 2,
-           "/terrain/{elevation,slope,roughness,obstacle}_map\n/terrain/semantic_points",
-           rad=0.05, ldx=0.14, fs=5.0)
+    # DDS inputs to semantic_lifting_node (from top of band)
+    dds_in(SLF_X, bt, SLF_X, NODE_Y + NH / 2,
+           "/segmentation/mask\n/lidar/projected_depth\n/tf",
+           rad=0.0, ldx=0.14, fs=4.8)
 
-    # bev → temporal
+    # DDS inputs to bev_fusion_node (terrain maps, from top of band)
+    dds_in(BEV_X, bt, BEV_X, NODE_Y + NH / 2,
+           "/terrain/{elevation,slope,\n  roughness,obstacle}_map",
+           rad=0.0, ldx=0.14, fs=4.8)
+
+    # DDS input: /ego/odometry → temporal_grid_fusion_node (from top of band)
+    dds_in(TMP_X, bt, TMP_X, NODE_Y + NH / 2,
+           "/ego/odometry", ldx=0.14, fs=4.8)
+
+    # Intra-process edges
+    arr(SLF_X + NW / 2, NODE_Y,
+        BEV_X - NW / 2, NODE_Y,
+        topic="/terrain/semantic_points", ldy=0.38, fs=5.0)
     arr(BEV_X + NW / 2, NODE_Y,
         TMP_X - NW / 2, NODE_Y,
         topic="/bev/feature_grid", ldy=0.38)
-
-    # temporal → costmap
     arr(TMP_X + NW / 2, NODE_Y,
         TRV_X - NW / 2, NODE_Y,
         topic="/bev/stable_grid", ldy=0.38)
 
-    # exits
-    exit_r(TRV_X, NODE_Y, "/world/traversability_grid", dy=+0.22)
-    exit_r(TRV_X, NODE_Y, "/planner/costmap",            dy=-0.22)
+    # Exit
+    exit_r(TRV_X, NODE_Y, "/costmap")
 
     # ── Legend and title ──────────────────────────────────────────────────────
     handles = [

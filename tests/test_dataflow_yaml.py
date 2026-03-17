@@ -64,13 +64,20 @@ def test_operator_source_dirs_exist():
         node_id = node.get("id", "")
         base = node_id[: -len("_node")] if node_id.endswith("_node") else node_id
 
+        # 1. Check stripped node id
         matched = base in src_dirs
 
+        # 2. Check explicit package field (e.g. camera_branch lives in camera_preprocess/)
+        if not matched and "package" in node:
+            matched = node["package"] in src_dirs
+
+        # 3. Fallback: check plugin namespace prefix
         if not matched and "plugin" in node and isinstance(node["plugin"], str):
             plugin_prefix = node["plugin"].split("::")[0].lower()
             matched = any(plugin_prefix in d for d in src_dirs)
 
         assert matched, (
             f"Could not find a source directory under src/ for node '{node_id}'. "
-            f"Expected directory named '{base}' (one of: {sorted(src_dirs)})"
+            f"Expected directory named '{base}' or package '{node.get('package', '')}' "
+            f"(one of: {sorted(src_dirs)})"
         )

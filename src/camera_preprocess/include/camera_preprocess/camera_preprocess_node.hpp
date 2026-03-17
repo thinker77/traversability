@@ -7,10 +7,10 @@
 namespace traversability_generator
 {
 
-class CameraPreprocessNode : public rclcpp::Node
+class CameraBranchNode : public rclcpp::Node
 {
 public:
-  explicit CameraPreprocessNode(const rclcpp::NodeOptions & options);
+  explicit CameraBranchNode(const rclcpp::NodeOptions & options);
 
 private:
   // ── Parameters ────────────────────────────────────────────────────────────

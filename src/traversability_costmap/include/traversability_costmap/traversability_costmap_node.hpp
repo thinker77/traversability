@@ -21,17 +21,14 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr stable_grid_sub_;
 
   // ── Publishers (sources) ──────────────────────────────────────────────────
-  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr traversability_grid_pub_;
-  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr planner_costmap_pub_;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_pub_;
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
   void onStableGrid(sensor_msgs::msg::Image::SharedPtr msg);
 
   // ── Processing ────────────────────────────────────────────────────────────
-  nav_msgs::msg::OccupancyGrid::SharedPtr toTraversabilityGrid(
+  nav_msgs::msg::OccupancyGrid::SharedPtr toCostmap(
     const sensor_msgs::msg::Image & grid) const;
-  nav_msgs::msg::OccupancyGrid::SharedPtr toPlannerCostmap(
-    const nav_msgs::msg::OccupancyGrid & traversability_grid) const;
 };
 
 }  // namespace traversability_generator

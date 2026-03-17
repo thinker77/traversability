@@ -1,6 +1,6 @@
-# Build outputs
+# Colcon build and install outputs (rebuilt inside the container)
 build/
-bazel-*
+install/
 
 # Git
 .git/

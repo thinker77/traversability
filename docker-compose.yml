@@ -1,0 +1,46 @@
+services:
+
+  # ── dev ────────────────────────────────────────────────────────────────────
+  # Interactive build environment. Source is mounted from the host so edits
+  # are reflected immediately without rebuilding the image.
+  #
+  # Usage:
+  #   docker compose run --rm dev               # drop into a bash shell
+  #   docker compose run --rm dev colcon build  # run a single command
+  #
+  dev:
+    build:
+      context: .
+      target: base          # only the deps layer — no source copy
+    volumes:
+      - .:/workspace        # live mount: edit on host, build in container
+      - colcon_build:/tmp/colcon_build    # persistent build cache
+      - colcon_install:/workspace/install # persistent install tree
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    entrypoint: ["/bin/bash", "--login"]
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=/workspace/config/cyclonedds.xml
+
+  # ── runtime ────────────────────────────────────────────────────────────────
+  # Self-contained image built from source. Launches the full pipeline by
+  # default; pass arguments to run a specific command instead.
+  #
+  # Usage:
+  #   docker compose up runtime             # launch full pipeline
+  #   docker compose run --rm runtime bash  # inspect the runtime image
+  #
+  runtime:
+    build:
+      context: .
+      target: runtime
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - CYCLONEDDS_URI=/workspace/config/cyclonedds.xml
+    network_mode: host      # lets ROS 2 DDS reach other nodes on the host
+
+volumes:
+  colcon_build:
+  colcon_install:

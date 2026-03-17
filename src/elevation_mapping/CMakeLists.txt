@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(elevation_mapping)
 
-# Stub — replace with elevation_mapping_cupy via FetchContent in production
+# Stub — superseded by src/terrain_model. Kept for reference only.
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)

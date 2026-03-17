@@ -14,12 +14,14 @@ LidarProjectionNode::LidarProjectionNode(const rclcpp::NodeOptions & options)
   max_depth_m_  = declare_parameter("max_depth_m",  80.0);
 
   // ── Publishers ────────────────────────────────────────────────────────────
+  points_projection_pub_ = create_publisher<sensor_msgs::msg::PointCloud2>(
+    "points_projection", rclcpp::SensorDataQoS());
   projected_depth_pub_ = create_publisher<sensor_msgs::msg::Image>(
     "projected_depth", rclcpp::SensorDataQoS());
 
   // ── Subscribers ───────────────────────────────────────────────────────────
   points_sub_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-    "points_ground_removed", rclcpp::SensorDataQoS(),
+    "points_no_tall_objects", rclcpp::SensorDataQoS(),
     [this](sensor_msgs::msg::PointCloud2::SharedPtr msg) { onPoints(msg); });
 
   RCLCPP_INFO(get_logger(), "LidarProjectionNode ready (%dx%d)", image_width_, image_height_);
@@ -27,17 +29,28 @@ LidarProjectionNode::LidarProjectionNode(const rclcpp::NodeOptions & options)
 
 void LidarProjectionNode::onPoints(sensor_msgs::msg::PointCloud2::SharedPtr msg)
 {
-  auto depth = project(*msg);
-  projected_depth_pub_->publish(*depth);
+  points_projection_pub_->publish(*projectPoints(*msg));
+  projected_depth_pub_->publish(*projectDepth(*msg));
 }
 
-sensor_msgs::msg::Image::SharedPtr LidarProjectionNode::project(
+sensor_msgs::msg::PointCloud2::SharedPtr LidarProjectionNode::projectPoints(
+  const sensor_msgs::msg::PointCloud2 & cloud) const
+{
+  // TODO: project the input cloud onto the image plane using camera intrinsics
+  // and return the subset of points that fall within the image bounds and have
+  // z in (0, max_depth_m_].  Each retained point keeps its x, y, z fields plus
+  // a u, v pixel-coordinate field pair.
+  auto out = std::make_shared<sensor_msgs::msg::PointCloud2>();
+  out->header = cloud.header;
+  return out;
+}
+
+sensor_msgs::msg::Image::SharedPtr LidarProjectionNode::projectDepth(
   const sensor_msgs::msg::PointCloud2 & cloud) const
 {
   // TODO: project each 3-D point onto the image plane using the camera
-  // intrinsics loaded from the camera_info topic and store the z-distance
-  // (range) at the corresponding pixel. Discard points with z > max_depth_m_
-  // or behind the camera (z <= 0).
+  // intrinsics and store the z-distance (range) at the corresponding pixel.
+  // Discard points with z > max_depth_m_ or behind the camera (z <= 0).
   (void)cloud;
   auto depth = std::make_shared<sensor_msgs::msg::Image>();
   depth->header   = cloud.header;

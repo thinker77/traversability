@@ -27,10 +27,10 @@ public:
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-class SegmentationNode : public rclcpp::Node
+class SemanticSegmentationNode : public rclcpp::Node
 {
 public:
-  explicit SegmentationNode(const rclcpp::NodeOptions & options);
+  explicit SemanticSegmentationNode(const rclcpp::NodeOptions & options);
 
 private:
   // ── Parameters ────────────────────────────────────────────────────────────
@@ -40,7 +40,6 @@ private:
   float confidence_threshold_;
   std::vector<std::string> class_labels_;
   bool edge_refinement_enabled_;
-  bool occlusion_handling_enabled_;
   std::string backend_type_;
 
   // ── Inference backend (runtime-selected) ──────────────────────────────────
@@ -48,26 +47,19 @@ private:
 
   // ── Subscribers (sinks) ───────────────────────────────────────────────────
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr depth_sub_;
 
   // ── Publishers (sources) ──────────────────────────────────────────────────
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr seg_mask_pub_;
 
-  // ── Internal state ────────────────────────────────────────────────────────
-  sensor_msgs::msg::Image::SharedPtr latest_depth_;
-
   // ── Callbacks ─────────────────────────────────────────────────────────────
   void onImage(sensor_msgs::msg::Image::SharedPtr msg);
-  void onDepth(sensor_msgs::msg::Image::SharedPtr msg);
 
   // ── Processing ────────────────────────────────────────────────────────────
   std::vector<float> preprocess(const sensor_msgs::msg::Image & image);
   sensor_msgs::msg::Image::SharedPtr postprocess(
     const std::vector<uint8_t> & raw_mask,
     const std_msgs::msg::Header & header);
-  void refineEdges(
-    sensor_msgs::msg::Image & mask,
-    const sensor_msgs::msg::Image & depth);
+  void refineEdges(sensor_msgs::msg::Image & mask);
 
   // ── Factory ───────────────────────────────────────────────────────────────
   std::unique_ptr<InferenceBackend> createBackend(const std::string & type);

@@ -13,9 +13,9 @@ SemanticLiftingNode::SemanticLiftingNode(const rclcpp::NodeOptions & options)
     "semantic_points", rclcpp::SensorDataQoS());
 
   // ── Subscribers ───────────────────────────────────────────────────────────
-  camera_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
-    "camera_info_rect", rclcpp::QoS(10).reliable(),
-    [this](sensor_msgs::msg::CameraInfo::SharedPtr msg) { onCameraInfo(msg); });
+  tf_sub_ = create_subscription<tf2_msgs::msg::TFMessage>(
+    "tf", rclcpp::QoS(10).reliable(),
+    [this](tf2_msgs::msg::TFMessage::SharedPtr msg) { onTf(msg); });
 
   seg_mask_sub_ = create_subscription<sensor_msgs::msg::Image>(
     "seg_mask", rclcpp::SensorDataQoS(),
@@ -28,9 +28,10 @@ SemanticLiftingNode::SemanticLiftingNode(const rclcpp::NodeOptions & options)
   RCLCPP_INFO(get_logger(), "SemanticLiftingNode ready");
 }
 
-void SemanticLiftingNode::onCameraInfo(sensor_msgs::msg::CameraInfo::SharedPtr msg)
+void SemanticLiftingNode::onTf(tf2_msgs::msg::TFMessage::SharedPtr msg)
 {
-  camera_info_ = msg;
+  // TODO: feed transforms into tf2 buffer for frame alignment during lifting.
+  (void)msg;
 }
 
 void SemanticLiftingNode::onSegMask(sensor_msgs::msg::Image::SharedPtr msg)
@@ -47,7 +48,7 @@ void SemanticLiftingNode::onProjectedDepth(sensor_msgs::msg::Image::SharedPtr ms
 
 void SemanticLiftingNode::tryLift()
 {
-  if (!latest_seg_mask_ || !latest_depth_ || !camera_info_) {
+  if (!latest_seg_mask_ || !latest_depth_) {
     return;
   }
 
@@ -57,7 +58,7 @@ void SemanticLiftingNode::tryLift()
     return;
   }
 
-  auto points = liftToPoints(*latest_seg_mask_, *latest_depth_, *camera_info_);
+  auto points = liftToPoints(*latest_seg_mask_, *latest_depth_);
   semantic_points_pub_->publish(*points);
 
   latest_seg_mask_.reset();
@@ -66,16 +67,14 @@ void SemanticLiftingNode::tryLift()
 
 sensor_msgs::msg::PointCloud2::SharedPtr SemanticLiftingNode::liftToPoints(
   const sensor_msgs::msg::Image & seg_mask,
-  const sensor_msgs::msg::Image & depth,
-  const sensor_msgs::msg::CameraInfo & camera_info) const
+  const sensor_msgs::msg::Image & depth) const
 {
-  // TODO: for each pixel in seg_mask, read the depth value from depth image,
-  // back-project using camera_info intrinsics (K matrix) to obtain a 3-D point,
-  // and attach the semantic class label. Return as PointCloud2 with fields
-  // x, y, z, label.
+  // TODO: for each pixel in seg_mask, read the depth value from the depth image,
+  // back-project using the camera intrinsics (obtained via tf2 or a fixed
+  // calibration param) to obtain a 3-D point, and attach the semantic class
+  // label. Return as PointCloud2 with fields x, y, z, label.
   (void)seg_mask;
   (void)depth;
-  (void)camera_info;
   auto out = std::make_shared<sensor_msgs::msg::PointCloud2>();
   out->header = seg_mask.header;
   return out;

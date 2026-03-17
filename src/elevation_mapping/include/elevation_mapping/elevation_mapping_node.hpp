@@ -1,17 +1,10 @@
 #pragma once
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ElevationMappingNode
+// ElevationMappingNode — stub (superseded by terrain_model package)
 //
-// Thin ROS 2 wrapper around elevation_mapping_cupy (ETH Zurich).
-// elevation_mapping_cupy is a CMake/Python package — it is brought in via
-// rules_foreign_cc in WORKSPACE.bazel and its ROS 2 node is launched directly.
-//
-// This header exists as a placeholder so the Bazel target graph is complete.
-// In practice, elevation_mapping_cupy's own node is added to the composable
-// container in perception.launch.py using its registered plugin name.
-//
-// See: https://github.com/leggedrobotics/elevation_mapping_cupy
+// This package is no longer part of the active pipeline.
+// Terrain modelling is now handled by src/terrain_model/TerrainModelNode.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include <grid_map_msgs/msg/grid_map.hpp>

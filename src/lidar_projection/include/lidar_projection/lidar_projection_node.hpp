@@ -22,13 +22,16 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr points_sub_;
 
   // ── Publishers (sources) ──────────────────────────────────────────────────
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr points_projection_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr projected_depth_pub_;
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
   void onPoints(sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
   // ── Processing ────────────────────────────────────────────────────────────
-  sensor_msgs::msg::Image::SharedPtr project(
+  sensor_msgs::msg::Image::SharedPtr projectDepth(
+    const sensor_msgs::msg::PointCloud2 & cloud) const;
+  sensor_msgs::msg::PointCloud2::SharedPtr projectPoints(
     const sensor_msgs::msg::PointCloud2 & cloud) const;
 };
 

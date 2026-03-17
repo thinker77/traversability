@@ -20,7 +20,7 @@ ament_target_dependencies(segmentation_node
 )
 
 rclcpp_components_register_node(segmentation_node
-  PLUGIN "traversability_generator::SegmentationNode"
+  PLUGIN "traversability_generator::SemanticSegmentationNode"
   EXECUTABLE segmentation_main
 )
 

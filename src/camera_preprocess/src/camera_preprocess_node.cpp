@@ -5,8 +5,8 @@
 namespace traversability_generator
 {
 
-CameraPreprocessNode::CameraPreprocessNode(const rclcpp::NodeOptions & options)
-: Node("camera_preprocess_node", options)
+CameraBranchNode::CameraBranchNode(const rclcpp::NodeOptions & options)
+: Node("camera_branch", options)
 {
   // ── Parameters ────────────────────────────────────────────────────────────
   undistort_enabled_ = declare_parameter("undistort_enabled", true);
@@ -31,16 +31,17 @@ CameraPreprocessNode::CameraPreprocessNode(const rclcpp::NodeOptions & options)
     "image_raw", rclcpp::SensorDataQoS(),
     [this](sensor_msgs::msg::Image::SharedPtr msg) { onImage(msg); });
 
-  RCLCPP_INFO(get_logger(), "CameraPreprocessNode ready");
+  RCLCPP_INFO(get_logger(), "CameraBranchNode ready");
+
 }
 
-void CameraPreprocessNode::onCameraInfo(sensor_msgs::msg::CameraInfo::SharedPtr msg)
+void CameraBranchNode::onCameraInfo(sensor_msgs::msg::CameraInfo::SharedPtr msg)
 {
   camera_info_ = msg;
   camera_info_proc_pub_->publish(*msg);
 }
 
-void CameraPreprocessNode::onImage(sensor_msgs::msg::Image::SharedPtr msg)
+void CameraBranchNode::onImage(sensor_msgs::msg::Image::SharedPtr msg)
 {
   if (!camera_info_) {
     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
@@ -65,7 +66,7 @@ void CameraPreprocessNode::onImage(sensor_msgs::msg::Image::SharedPtr msg)
   image_proc_pub_->publish(*image);
 }
 
-sensor_msgs::msg::Image::SharedPtr CameraPreprocessNode::undistort(
+sensor_msgs::msg::Image::SharedPtr CameraBranchNode::undistort(
   const sensor_msgs::msg::Image & image)
 {
   // TODO: apply cv::undistort using camera_info_ D and K matrices.
@@ -73,7 +74,7 @@ sensor_msgs::msg::Image::SharedPtr CameraPreprocessNode::undistort(
   return out;
 }
 
-sensor_msgs::msg::Image::SharedPtr CameraPreprocessNode::resize(
+sensor_msgs::msg::Image::SharedPtr CameraBranchNode::resize(
   const sensor_msgs::msg::Image & image)
 {
   // TODO: apply cv::resize to output_width_ x output_height_.
@@ -81,7 +82,7 @@ sensor_msgs::msg::Image::SharedPtr CameraPreprocessNode::resize(
   return out;
 }
 
-sensor_msgs::msg::Image::SharedPtr CameraPreprocessNode::normalize(
+sensor_msgs::msg::Image::SharedPtr CameraBranchNode::normalize(
   const sensor_msgs::msg::Image & image)
 {
   // TODO: convert to float32, subtract mean_, divide by std_ per channel.
@@ -91,4 +92,4 @@ sensor_msgs::msg::Image::SharedPtr CameraPreprocessNode::normalize(
 
 }  // namespace traversability_generator
 
-RCLCPP_COMPONENTS_REGISTER_NODE(traversability_generator::CameraPreprocessNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(traversability_generator::CameraBranchNode)

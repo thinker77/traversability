@@ -20,7 +20,7 @@ ament_target_dependencies(camera_preprocess_node
 )
 
 rclcpp_components_register_node(camera_preprocess_node
-  PLUGIN "traversability_generator::CameraPreprocessNode"
+  PLUGIN "traversability_generator::CameraBranchNode"
   EXECUTABLE camera_preprocess_main
 )
 

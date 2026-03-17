@@ -13,11 +13,8 @@ TraversabilityCostmapNode::TraversabilityCostmapNode(const rclcpp::NodeOptions &
   inflation_radius_m_    = declare_parameter("inflation_radius_m",    0.5);
 
   // ── Publishers ────────────────────────────────────────────────────────────
-  traversability_grid_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
-    "traversability_grid", rclcpp::QoS(10).reliable());
-
-  planner_costmap_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
-    "planner_costmap", rclcpp::QoS(10).reliable());
+  costmap_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
+    "costmap", rclcpp::QoS(10).reliable());
 
   // ── Subscribers ───────────────────────────────────────────────────────────
   stable_grid_sub_ = create_subscription<sensor_msgs::msg::Image>(
@@ -29,33 +26,22 @@ TraversabilityCostmapNode::TraversabilityCostmapNode(const rclcpp::NodeOptions &
 
 void TraversabilityCostmapNode::onStableGrid(sensor_msgs::msg::Image::SharedPtr msg)
 {
-  auto trav_grid = toTraversabilityGrid(*msg);
-  traversability_grid_pub_->publish(*trav_grid);
-
-  auto costmap = toPlannerCostmap(*trav_grid);
-  planner_costmap_pub_->publish(*costmap);
+  costmap_pub_->publish(*toCostmap(*msg));
 }
 
-nav_msgs::msg::OccupancyGrid::SharedPtr TraversabilityCostmapNode::toTraversabilityGrid(
+nav_msgs::msg::OccupancyGrid::SharedPtr TraversabilityCostmapNode::toCostmap(
   const sensor_msgs::msg::Image & grid) const
 {
   // TODO: interpret each cell of the stable BEV feature grid as a traversability
   // score in [0, 1] and encode it as an OccupancyGrid value in [0, 100].
+  // Apply inflation (expand lethal cells by inflation_radius_m_) and
+  // remap to the nav2 costmap convention (0=free, 99=inscribed, 100=lethal).
   // Cells above lethal_cost_threshold_ are marked as lethal (100).
   (void)grid;
   auto out = std::make_shared<nav_msgs::msg::OccupancyGrid>();
-  out->header = grid.header;
-  out->info.width    = grid.width;
-  out->info.height   = grid.height;
-  return out;
-}
-
-nav_msgs::msg::OccupancyGrid::SharedPtr TraversabilityCostmapNode::toPlannerCostmap(
-  const nav_msgs::msg::OccupancyGrid & traversability_grid) const
-{
-  // TODO: apply inflation (expand lethal cells by inflation_radius_m_) and
-  // remap values to the nav2 costmap convention (0=free, 100=lethal, 99=inscribed).
-  auto out = std::make_shared<nav_msgs::msg::OccupancyGrid>(traversability_grid);
+  out->header      = grid.header;
+  out->info.width  = grid.width;
+  out->info.height = grid.height;
   return out;
 }
 

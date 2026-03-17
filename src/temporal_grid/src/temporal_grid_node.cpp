@@ -17,12 +17,23 @@ TemporalGridFusionNode::TemporalGridFusionNode(const rclcpp::NodeOptions & optio
     "stable_grid", rclcpp::QoS(10).reliable());
 
   // ── Subscribers ───────────────────────────────────────────────────────────
+  odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
+    "odometry", rclcpp::SensorDataQoS(),
+    [this](nav_msgs::msg::Odometry::SharedPtr msg) { onOdom(msg); });
+
   feature_grid_sub_ = create_subscription<sensor_msgs::msg::Image>(
     "feature_grid", rclcpp::QoS(10).reliable(),
     [this](sensor_msgs::msg::Image::SharedPtr msg) { onFeatureGrid(msg); });
 
   RCLCPP_INFO(get_logger(), "TemporalGridFusionNode ready (history=%d, decay=%.2f)",
     history_length_, decay_factor_);
+}
+
+void TemporalGridFusionNode::onOdom(nav_msgs::msg::Odometry::SharedPtr msg)
+{
+  // TODO: use odometry for motion-compensated warping of historical grids
+  // into the current ego frame before temporal fusion.
+  latest_odom_ = msg;
 }
 
 void TemporalGridFusionNode::onFeatureGrid(sensor_msgs::msg::Image::SharedPtr msg)
@@ -38,9 +49,9 @@ void TemporalGridFusionNode::onFeatureGrid(sensor_msgs::msg::Image::SharedPtr ms
 
 sensor_msgs::msg::Image::SharedPtr TemporalGridFusionNode::fuseHistory() const
 {
-  // TODO: apply exponential moving average across grid_history_ using
-  // decay_factor_ to produce a temporally-stable feature grid.
-  // Older grids contribute less (weight = decay_factor_^age).
+  // TODO: warp each historical grid into the current frame using latest_odom_
+  // delta poses, then apply exponential moving average with decay_factor_^age
+  // weighting to produce a temporally-stable feature grid.
   auto out = std::make_shared<sensor_msgs::msg::Image>(grid_history_.back());
   return out;
 }

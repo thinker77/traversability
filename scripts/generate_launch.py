@@ -5,6 +5,11 @@ generate_launch.py
 Reads config/dataflow.yaml and generates launch/perception.launch.py
 as a ROS 2 ComposableNode launch file.
 
+Each process in dataflow.yaml becomes a separate ComposableNodeContainer
+(its own OS process). Nodes within the same container communicate via
+zero-copy intra-process callbacks; nodes in different containers communicate
+via DDS.
+
 Usage:
     python3 scripts/generate_launch.py [--dataflow config/dataflow.yaml]
                                        [--output  launch/perception.launch.py]
@@ -38,7 +43,7 @@ def generate_launch_description() -> LaunchDescription:
     )
     use_sim_time = LaunchConfiguration("use_sim_time")
 
-    # ── CycloneDDS shared memory (zero-copy for PointCloud2/Image on localhost)
+    # ── CycloneDDS (zero-copy intra-host via shared memory when enabled)
     cyclone_cfg = SetEnvironmentVariable(
         "CYCLONEDDS_URI",
         PathJoinSubstitution([pkg_share, "config/cyclonedds.xml"]),
@@ -47,25 +52,16 @@ def generate_launch_description() -> LaunchDescription:
         "RMW_IMPLEMENTATION", "rmw_cyclonedds_cpp"
     )
 
-    # ── Composable nodes (auto-generated from dataflow.yaml) ──────────────
+    # ── One ComposableNodeContainer per process (auto-generated from dataflow.yaml) ──
 '''
 
 LAUNCH_FOOTER = '''\
-
-    container = ComposableNodeContainer(
-        name="traversability_container",
-        namespace="",
-        package="rclcpp_components",
-        executable="component_container",
-        composable_node_descriptions=composable_nodes,
-        output="screen",
-    )
 
     return LaunchDescription([
         use_sim_time_arg,
         rmw_impl,
         cyclone_cfg,
-        container,
+{containers}
     ])
 '''
 
@@ -86,7 +82,7 @@ def node_package(node_id: str) -> str:
     return node_id[:-5] if node_id.endswith("_node") else node_id
 
 
-def render_composable_node(node: dict) -> str:
+def render_composable_node(node: dict, indent: str = "        ") -> str:
     node_id = node["id"]
     plugin = node.get(
         "plugin",
@@ -95,29 +91,55 @@ def render_composable_node(node: dict) -> str:
     params_file = node.get("params", "")
     package = node.get("package") or node_package(node_id)
 
+    i = indent
+    i2 = indent + "    "
+
     if params_file:
         params = (
-            f'            parameters=[\n'
-            f'                {{"use_sim_time": use_sim_time}},\n'
-            f'                PathJoinSubstitution([pkg_share, "{params_file}"]),\n'
-            f'            ],\n'
+            f'{i}    parameters=[\n'
+            f'{i2}    {{"use_sim_time": use_sim_time}},\n'
+            f'{i2}    PathJoinSubstitution([pkg_share, "{params_file}"]),\n'
+            f'{i}    ],\n'
         )
     else:
-        params = '            parameters=[{"use_sim_time": use_sim_time}],\n'
+        params = f'{i}    parameters=[{{"use_sim_time": use_sim_time}}],\n'
 
     remappings = render_remappings(node)
 
     return (
-        f'        ComposableNode(\n'
-        f'            package="{package}",\n'
-        f'            plugin="{plugin}",\n'
-        f'            name="{node_id}",\n'
-        f'            namespace="",\n'
+        f'{i}ComposableNode(\n'
+        f'{i}    package="{package}",\n'
+        f'{i}    plugin="{plugin}",\n'
+        f'{i}    name="{node_id}",\n'
+        f'{i}    namespace="",\n'
         f'{params}'
-        f'            remappings=[\n'
-        f'                {remappings},\n'
-        f'            ],\n'
-        f'        ),\n'
+        f'{i}    remappings=[\n'
+        f'{i}        {remappings},\n'
+        f'{i}    ],\n'
+        f'{i}),\n'
+    )
+
+
+def render_container(proc: dict) -> str:
+    proc_id = proc["id"]
+    executable = proc.get("executable", proc_id)
+    operators = [n for n in proc.get("nodes", [])
+                 if n.get("type", "operator") == "operator"]
+
+    node_lines = "".join(render_composable_node(n) for n in operators)
+
+    return (
+        f'    # ── {proc_id}\n'
+        f'    {proc_id}_container = ComposableNodeContainer(\n'
+        f'        name="{executable}_container",\n'
+        f'        namespace="",\n'
+        f'        package="rclcpp_components",\n'
+        f'        executable="component_container",\n'
+        f'        composable_node_descriptions=[\n'
+        f'{node_lines}'
+        f'        ],\n'
+        f'        output="screen",\n'
+        f'    )\n'
     )
 
 
@@ -125,22 +147,31 @@ def generate(dataflow_path: Path, output_path: Path) -> None:
     with open(dataflow_path) as f:
         dataflow = yaml.safe_load(f)
 
-    # Support both flat schema (nodes[]) and process schema (processes[].nodes)
-    if "processes" in dataflow:
-        operators = []
-        for proc in dataflow["processes"]:
-            for node in proc.get("nodes", []):
-                if node.get("type", "operator") == "operator":
-                    operators.append(node)
-    else:
-        operators = [n for n in dataflow["nodes"] if n["type"] == "operator"]
-
     lines = [LAUNCH_HEADER.format(source=dataflow_path)]
-    lines.append("    composable_nodes = [\n")
-    for node in operators:
-        lines.append(render_composable_node(node))
-    lines.append("    ]\n")
-    lines.append(LAUNCH_FOOTER)
+
+    if "processes" in dataflow:
+        container_names = []
+        for proc in dataflow["processes"]:
+            lines.append(render_container(proc))
+            container_names.append(f"        {proc['id']}_container,")
+    else:
+        # Flat schema fallback: single container
+        operators = [n for n in dataflow["nodes"] if n["type"] == "operator"]
+        lines.append('    single_container = ComposableNodeContainer(\n')
+        lines.append('        name="traversability_container",\n')
+        lines.append('        namespace="",\n')
+        lines.append('        package="rclcpp_components",\n')
+        lines.append('        executable="component_container",\n')
+        lines.append('        composable_node_descriptions=[\n')
+        for node in operators:
+            lines.append(render_composable_node(node))
+        lines.append('        ],\n')
+        lines.append('        output="screen",\n')
+        lines.append('    )\n')
+        container_names = ["        single_container,"]
+
+    containers_str = "\n".join(container_names)
+    lines.append(LAUNCH_FOOTER.format(containers=containers_str))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("".join(lines), encoding="utf-8")

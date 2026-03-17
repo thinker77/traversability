@@ -1,0 +1,17 @@
+terrain_model_node:
+  ros__parameters:
+    # Grid
+    resolution_m: 0.1
+    map_length_x_m: 20.0
+    map_length_y_m: 20.0
+
+    # Sensor model
+    sensor_cutoff_min_depth_m: 0.2
+    sensor_cutoff_max_depth_m: 80.0
+
+    # Temporal
+    time_tolerance_sec: 0.2
+
+    # Tall-object filtering (points above this height relative to ground are
+    # removed before passing the cloud to lidar_projection_node)
+    tall_object_height_threshold_m: 0.5
